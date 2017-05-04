@@ -312,6 +312,8 @@ format_cht cht
     'percentage ovals
 make_perc_ovals cht
 
+Set pub_cht = cht
+
 End Sub
 
 Sub UpdateChart()
@@ -321,6 +323,11 @@ Sub UpdateChart()
 '---------------------------
 
 'check for var errors
+    'pub_cht exists
+If pub_cht Is Nothing Then
+    MsgBox "No chart object found."
+    Exit Sub
+End If
     'name_arr, lim_arr, and usage_arr all exist
 If data_ready = False Then Exit Sub
 
