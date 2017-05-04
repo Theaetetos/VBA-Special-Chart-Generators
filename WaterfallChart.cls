@@ -9,7 +9,7 @@ Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 Option Explicit
 
-Public Enum ArrayDimension
+Public Enum wcArrayDimension
     wcGuess = 0
     wcByRow = 1
     wcByColumn = 2
@@ -30,7 +30,7 @@ ChangesArray = raw_arr
 
 End Property
 
-Property Let ChangesArray(Arr As Variant)
+Property Let ChangesArray(ByRef Arr As Variant)
 
 'takes as input an array of one or two dimensions and turns it into a two-dimensional array with one row with:
 '   first and last elements being endpoints and middle elements being changes
@@ -42,19 +42,8 @@ Property Let ChangesArray(Arr As Variant)
 'param checks:
     'Arr has 1 or 2 dimensions
 Dim dimens As Integer
-dimens = GetArrDimensions(Arr)
-Select Case dimens
-    Case Is < 1
-        MsgBox _
-            "Attempted to set ChangesArray property with a non-array value." & vbNewLine & _
-            "Expected two-dimensional array."
-        Exit Property
-    Case Is > 2
-        MsgBox _
-            "Attempted to set ChangesArray property with multi-dimensional array." & vbNewLine & _
-            "Expected two-dimensional array."
-        Exit Property
-End Select
+dimens = are_valid_dims(Arr, 1, 2, "Property Let ChangesArray")
+If dimens = 0 Then Exit Property
 
 'convert Arr
 Dim i As Integer, corr As Integer
@@ -91,12 +80,44 @@ HeaderArray = header_arr
 
 End Property
 
-Property Let HeaderArray(Arr As Variant)
+Property Let HeaderArray(ByRef Arr As Variant)
 
-'ADD: param checks, cleaning
+'takes as input an array of one or two dimensions and turns it into a two-dimensional array with one row of headers
+'if a two-dimensional array is passed in, only the first row/column of the dimension with the
+'   lower magnitude is read
 
+'-------------------------------------------------------------------
 
-header_arr = Arr
+'param checks:
+    'Arr has 1 or 2 dimensions
+Dim dimens As Integer
+dimens = are_valid_dims(Arr, 1, 2, "Property Let HeaderArray")
+If dimens = 0 Then Exit Property
+
+'convert Arr
+Dim i As Integer, corr As Integer
+Select Case dimens
+    Case Is = 1
+        If LBound(Arr) = 0 Then corr = -1
+        ReDim header_arr(1 To 1, 1 To UBound(Arr) - LBound(Arr) + 1)
+        For i = 1 To UBound(header_arr, 2)
+            header_arr(1, 1) = Arr(i + corr)
+        Next i
+    Case Is = 2
+        If LBound(Arr, 1) = 0 Then corr = -1
+        Select Case UBound(Arr, 1)
+            Case Is > UBound(Arr, 2)
+                ReDim header_arr(1 To 1, 1 To UBound(Arr, 1) - LBound(Arr, 1) + 1)
+                For i = 1 To UBound(header_arr, 2)
+                    header_arr(1, i) = Arr(i + corr, LBound(Arr, 2))
+                Next i
+            Case Else
+                ReDim header_arr(1 To 1, 1 To UBound(Arr, 2) - LBound(Arr, 2) + 1)
+                For i = 1 To UBound(header_arr, 2)
+                    header_arr(1, i) = Arr(LBound(Arr, 1), i + corr)
+                Next i
+        End Select
+End Select
 
 End Property
 
@@ -112,7 +133,7 @@ Set WorkbookLocation = wb_loc
 
 End Property
 
-Property Set WorkbookLocation(wb As Workbook)
+Property Set WorkbookLocation(ByRef wb As Workbook)
 
 Set wb_loc = wb
 
@@ -124,10 +145,7 @@ Set WorksheetLocation = ws_loc
 
 End Property
 
-Property Set WorksheetLocation(ws As Worksheet)
-
-'ADD: param checks, cleaning
-
+Property Set WorksheetLocation(ByRef ws As Worksheet)
 
 Set ws_loc = ws
 
@@ -139,10 +157,7 @@ Set RangeLocation = rng_loc
 
 End Property
 
-Property Set RangeLocation(Rng As Range)
-
-'ADD: param checks
-
+Property Set RangeLocation(ByRef Rng As Range)
 
 Set rng_loc = Rng
 
@@ -154,7 +169,7 @@ Set PublishedChart = pub_cht
 
 End Property
 
-Property Set PublishedChart(cht As Chart)
+Property Set PublishedChart(ByRef cht As Chart)
 
 Set pub_cht = cht
 
@@ -172,7 +187,7 @@ ttl = Str
 
 End Property
 
-Sub ConvertData(Arr As Variant, Optional ReadDimension As ArrayDimension = 0)
+Sub ReadData(ByRef Arr As Variant, Optional ReadDimension As wcArrayDimension = 0)
 
 'splits a passed-in array of data into ChangesArray and HeaderArray
 '   assumes that first row/column is headers and second is endpoints with changes in between
@@ -183,17 +198,7 @@ Sub ConvertData(Arr As Variant, Optional ReadDimension As ArrayDimension = 0)
 '-----------------------------------------
 
 'param checks: arr is one-dimensional and arr is >two-dimensional
-Select Case GetArrDimensions(Arr)
-    Case Is = 1
-        MsgBox _
-            "One-dimensional array passed into ConvertData." & vbNewLine & _
-            "Expected two-dimensional array."
-        Exit Sub
-    Case Is > 2
-        MsgBox _
-            "Multi-dimensional array passed into ConvertData." & vbNewLine & _
-            "Expected two-dimensional array."
-End Select
+If are_valid_dims(Arr, 2, 2, "Method ReadData") = 0 Then Exit Sub
 
 'get dimension to read by if not specified (error out if neither dimension has a magnitude of two)
 If ReadDimension = 0 Then
@@ -203,7 +208,7 @@ If ReadDimension = 0 Then
         ReadDimension = wcByColumn
     Else
         MsgBox _
-            "Neither dimension of array passed into ConvertData has a magnitude of 2." & vbNewLine & _
+            "Neither dimension of array passed into ReadData has a magnitude of 2." & vbNewLine & _
             "Expected at least one dimension of magnitude 2."
         Exit Sub
     End If
@@ -236,15 +241,14 @@ waterfallize
 
 End Sub
 
-Sub PublishChart(Optional ByArray As Boolean = True)
+Sub PublishChart()
 
 'publishes a waterfall chart to the location stored in object variables
-'param behavior:
-'   if ByArray=True, then creates chart using stored arrays
-'   if False, creates chart using stored range
-'   will error out if necessary variables are missing
 
 '--------------------------------------------------
+
+'ensure necessary arrays exist
+If data_ready() = False Then Exit Sub
 
 'determine publishing location and create new chart at that location
 '   WorksheetLocation and RangeLocation are checked to ensure they are not Nothing
@@ -262,6 +266,8 @@ If ws_loc Is Nothing Then
         Exit Sub
     End If
 End If
+
+'create cht and put it in correct location
 Dim cht As Chart
 Set cht = Charts.ADD
 If Not (rng_loc Is Nothing) Then
@@ -285,29 +291,21 @@ Set pub_cht = cht
 
 End Sub
 
-Sub UpdateSeries()
+Sub UpdateChart()
 
 'updates an existing waterfall chart using current object variables
 'errors out if PublishedChart is Nothing
 
 '-----------------------------------
 
+'check for var errors
+    'pub_cht exists
 If pub_cht Is Nothing Then
-    MsgBox "No chart object in scope."
+    MsgBox "No chart object found."
     Exit Sub
 End If
-
-Dim i As Integer
-
-'ensure user has set header_arr
-On Error GoTo no_headers:
-i = UBound(header_arr, 1)
-On Error GoTo 0
-
-'ensure user has set series_arr
-On Error GoTo no_series:
-i = UBound(series_arr, 1)
-On Error GoTo 0
+    'data arrays exist
+If data_ready = False Then Exit Sub
 
 'update series data
 set_series pub_cht
@@ -316,16 +314,6 @@ set_series pub_cht
 format_chart_general pub_cht
     'y-axis
 format_chart_y_axis pub_cht
-
-Exit Sub
-
-no_headers:
-MsgBox "No header data."
-Exit Sub
-
-no_series:
-MsgBox "No series data."
-Exit Sub
 
 End Sub
 
@@ -346,12 +334,12 @@ Private Sub waterfallize()
 
 'determine read protocol for raw_arr
     'get number of dimensions
-Dim dims As Integer
-dims = GetArrDimensions(raw_arr)
+Dim Dims As Integer
+Dims = get_arr_dims(raw_arr)
     'get dimension with more elements if necessary
 Dim read_dim As Integer
 read_dim = 1
-If dims > 1 Then
+If Dims > 1 Then
     If UBound(raw_arr, 1) < UBound(raw_arr, 2) Then read_dim = 2
 End If
 
@@ -366,39 +354,39 @@ raw_arr_lbound = LBound(raw_arr, read_dim)
         'data is also converted to type Double in this step
 Dim clean_arr() As Variant
 ReDim clean_arr(1 To col_ubound)
-Dim dbl As Double
+Dim Dbl As Double
 Dim i As Integer, col_id As Integer
 col_id = 1
-If dims > 1 Then
+If Dims > 1 Then
     If read_dim = 1 Then
         For i = raw_arr_lbound To UBound(raw_arr, 1)
             If raw_arr(i, 1) = Empty Then
-                dbl = 0
+                Dbl = 0
             Else
-                dbl = raw_arr(i, 1)
+                Dbl = raw_arr(i, 1)
             End If
-            clean_arr(col_id) = dbl
+            clean_arr(col_id) = Dbl
             col_id = col_id + 1
         Next i
     Else
         For i = raw_arr_lbound To UBound(raw_arr, 2)
             If raw_arr(1, i) = Empty Then
-                dbl = 0
+                Dbl = 0
             Else
-                dbl = raw_arr(1, i)
+                Dbl = raw_arr(1, i)
             End If
-            clean_arr(col_id) = dbl
+            clean_arr(col_id) = Dbl
             col_id = col_id + 1
         Next i
     End If
 Else
     For i = raw_arr_lbound To UBound(raw_arr, 1)
         If raw_arr(i) = Empty Then
-            dbl = 0
+            Dbl = 0
         Else
-            dbl = raw_arr(i)
+            Dbl = raw_arr(i)
         End If
-        clean_arr(col_id) = dbl
+        clean_arr(col_id) = Dbl
         col_id = col_id + 1
     Next i
 End If
@@ -445,7 +433,7 @@ Dim pr_invis As Double, _
     pr_pos_adj As Double, _
     pr_neg As Double, _
     pr_neg_adj As Double, _
-    last_abs_end, _
+    last_abs_end As Double, _
     cur_invis As Double, _
     cur_pos As Double, _
     cur_pos_adj As Double, _
@@ -628,13 +616,13 @@ With cht
     On Error Resume Next
     .Legend.Delete
     On Error GoTo 0
-    .SeriesCollection(3).Format.Fill.Visible = False
+    .SeriesCollection(3).format.Fill.Visible = False
     If (series_arr(1, 1) > 0 And series_arr(2, UBound(series_arr, 2)) > 0) Or _
     (series_arr(1, 1) < 0 And series_arr(2, UBound(series_arr, 2)) < 0) Then
-        .SeriesCollection(2).Format.Fill.ForeColor.RGB = .SeriesCollection(1).Format.Fill.ForeColor.RGB
+        .SeriesCollection(2).format.Fill.ForeColor.RGB = .SeriesCollection(1).format.Fill.ForeColor.RGB
     End If
-    .SeriesCollection(5).Format.Fill.ForeColor.RGB = .SeriesCollection(4).Format.Fill.ForeColor.RGB
-    .SeriesCollection(7).Format.Fill.ForeColor.RGB = .SeriesCollection(6).Format.Fill.ForeColor.RGB
+    .SeriesCollection(5).format.Fill.ForeColor.RGB = .SeriesCollection(4).format.Fill.ForeColor.RGB
+    .SeriesCollection(7).format.Fill.ForeColor.RGB = .SeriesCollection(6).format.Fill.ForeColor.RGB
     With .Axes(xlCategory)
         .TickLabels.Offset = 10
         .TickLabelPosition = xlLow
@@ -682,38 +670,101 @@ With cht
             Case Else
                 .TickLabels.NumberFormat = "[=0]0;[<>0]$#,##0"
         End Select
-        .MajorGridlines.Format.Line.Visible = False
+        .MajorGridlines.format.Line.Visible = False
     End With
 End With
 
 End Sub
 
-Private Function GetArrDimensions(Arr As Variant) As Integer
+Private Function get_arr_dims(Arr As Variant) As Integer
 
 'returns the number of dimensions of passed-in array
 
 '----------------------------------------
 
-Dim i As Long, dims As Integer
+Dim i As Long, Dims As Integer
 Dim done As Boolean
-dims = 1
+Dims = 1
 
 Do Until done = True
-    On Error GoTo dims:
-    i = UBound(Arr, dims)
+    On Error GoTo Dims:
+    i = UBound(Arr, Dims)
     On Error GoTo 0
     If done = True Then Exit Do
-    dims = dims + 1
+    Dims = Dims + 1
 Loop
 
 Exit Function
 
-dims:
+Dims:
 done = True
-dims = dims - 1
-GetArrDimensions = dims
+Dims = Dims - 1
+get_arr_dims = Dims
 
 Resume Next
+
+End Function
+
+Private Function are_valid_dims(ByRef Arr As Variant, l_bound As Integer, u_bound As Integer, caller As String) As Integer
+
+'checks whether passed-in array has dimensions within given bounds (inclusive)
+'returns 0 if not, number of dimensions if so
+'meant to be used for error handling (see message to user in case returning 0)
+
+'------------------------------------------------------------------------------------------
+
+'param checks:
+If l_bound < 0 Then
+    MsgBox "is_valid_dims procedure encountered an error:" & vbNewLine & _
+           "l_bound parameter is less than 0."
+    Exit Function
+End If
+
+If l_bound > u_bound Then
+    MsgBox "is_valid_dims procedure encountered an error:" & vbNewLine & _
+           "l_bound parameter is greater than ubound parameter."
+    Exit Function
+End If
+
+Dim dimens As Integer
+dimens = get_arr_dims(Arr)
+
+If dimens >= l_bound And dimens <= u_bound Then
+    are_valid_dims = dimens
+Else
+    MsgBox caller & " procedure encountered an error:" & vbNewLine & _
+           "Dimensions of array argument not within bounds."
+End If
+
+End Function
+
+Private Function is_arr(ByRef Arr As Variant) As Boolean
+
+'checks whether a passed-in variable is an array
+
+'-------------------------------------------
+
+If get_arr_dims(Arr) > 0 Then is_arr = True
+
+End Function
+
+Private Function data_ready() As Boolean
+
+'returns True if name_arr, lim_arr, and usage_arr have data in them
+
+'-------------------------------------------------
+
+If is_arr(header_arr) = False Then
+    MsgBox "No header data found."
+    Exit Function
+End If
+
+If is_arr(series_arr) = False Then
+    MsgBox "No series data found."
+    Exit Function
+End If
+
+data_ready = True
 
 End Function
 
